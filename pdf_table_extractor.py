@@ -46,9 +46,12 @@ def extract_tables_from_images(images, filename):
         # Encode the binary data to base64
         img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
 
+        full_response = ""
+        chunk_size = 4096  # Adjust this value based on your needs
+
         message = client.messages.create(
             model="claude-3-opus-20240229",
-            max_tokens=1500,
+            max_tokens=4000,  # Increased max_tokens
             messages=[
                 {
                     "role": "user",
@@ -85,11 +88,17 @@ Format the extracted data as a list of dictionaries, where each dictionary repre
             ]
         )
         
+        # Collect the full response
+        for chunk in message.content[0].text:
+            full_response += chunk
+            if len(full_response) >= chunk_size:
+                print(f"Received {len(full_response)} characters")
+        
         # Print raw response for debugging
-        print("Raw API response:", message.content[0].text)
+        print("Raw API response:", full_response)
         
         try:
-            tables = json.loads(message.content[0].text)
+            tables = json.loads(full_response)
             for table in tables:
                 table['filename'] = filename
                 table['page_number'] = i + 1
