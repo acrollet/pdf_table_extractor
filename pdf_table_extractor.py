@@ -26,10 +26,18 @@ def convert_pdf_to_image(pdf_path):
 def extract_tables_from_image(image):
     client = anthropic.Anthropic()
     
+    # Resize the image if it's too large
+    max_size = (1600, 1600)  # Adjust these dimensions as needed
+    image.thumbnail(max_size, Image.LANCZOS)
+    
     # Convert PIL Image to bytes
     img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='PNG')
+    image.save(img_byte_arr, format='PNG', optimize=True, quality=85)
     img_byte_arr = img_byte_arr.getvalue()
+
+    # Check if the image is still too large
+    if len(img_byte_arr) > 5 * 1024 * 1024:  # 5MB in bytes
+        raise ValueError("Image is still too large after resizing. Please use a smaller image or adjust the resize parameters.")
 
     # Encode the binary data to base64
     img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
