@@ -30,14 +30,19 @@ def extract_tables_from_image(image):
     max_size = (1600, 1600)  # Adjust these dimensions as needed
     image.thumbnail(max_size, Image.LANCZOS)
     
-    # Convert PIL Image to bytes
-    img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='PNG', optimize=True, quality=85)
-    img_byte_arr = img_byte_arr.getvalue()
-
-    # Check if the image is still too large
-    if len(img_byte_arr) > 5 * 1024 * 1024:  # 5MB in bytes
-        raise ValueError("Image is still too large after resizing. Please use a smaller image or adjust the resize parameters.")
+    # Convert PIL Image to bytes with iterative quality reduction
+    quality = 85
+    while True:
+        img_byte_arr = io.BytesIO()
+        image.save(img_byte_arr, format='JPEG', optimize=True, quality=quality)
+        img_byte_arr = img_byte_arr.getvalue()
+        
+        if len(img_byte_arr) <= 5 * 1024 * 1024:  # 5MB in bytes
+            break
+        
+        quality -= 5
+        if quality < 20:
+            raise ValueError("Unable to reduce image size below 5MB. Please use a smaller image.")
 
     # Encode the binary data to base64
     img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
