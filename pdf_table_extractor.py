@@ -26,21 +26,15 @@ def convert_pdf_to_image(pdf_path):
     max_size = (1600, 1600)  # Adjust these dimensions as needed
     combined_image.thumbnail(max_size, Image.LANCZOS)
     
-    # Convert PIL Image to bytes with iterative quality reduction
-    quality = 85
-    while True:
-        img_byte_arr = io.BytesIO()
-        combined_image.save(img_byte_arr, format='JPEG', optimize=True, quality=quality)
-        img_byte_arr = img_byte_arr.getvalue()
-        
-        if len(img_byte_arr) <= 5 * 1024 * 1024:  # 5MB in bytes
-            break
-        
-        quality -= 5
-        if quality < 20:
-            raise ValueError("Unable to reduce image size below 5MB. Please use a smaller image.")
+    # Convert PIL Image to bytes
+    img_byte_arr = io.BytesIO()
+    combined_image.save(img_byte_arr, format='PNG')
+    img_byte_arr = img_byte_arr.getvalue()
     
-    return combined_image, len(img_byte_arr), quality
+    if len(img_byte_arr) > 5 * 1024 * 1024:  # 5MB in bytes
+        raise ValueError("Image size exceeds 5MB. Please use a smaller image or lower resolution.")
+    
+    return combined_image, len(img_byte_arr)
 
 def extract_tables_from_image(image):
     client = anthropic.Anthropic()
@@ -49,19 +43,13 @@ def extract_tables_from_image(image):
     max_size = (1600, 1600)  # Adjust these dimensions as needed
     image.thumbnail(max_size, Image.LANCZOS)
     
-    # Convert PIL Image to bytes with iterative quality reduction
-    quality = 85
-    while True:
-        img_byte_arr = io.BytesIO()
-        image.save(img_byte_arr, format='JPEG', optimize=True, quality=quality)
-        img_byte_arr = img_byte_arr.getvalue()
-        
-        if len(img_byte_arr) <= 5 * 1024 * 1024:  # 5MB in bytes
-            break
-        
-        quality -= 5
-        if quality < 20:
-            raise ValueError("Unable to reduce image size below 5MB. Please use a smaller image.")
+    # Convert PIL Image to bytes
+    img_byte_arr = io.BytesIO()
+    image.save(img_byte_arr, format='PNG')
+    img_byte_arr = img_byte_arr.getvalue()
+    
+    if len(img_byte_arr) > 5 * 1024 * 1024:  # 5MB in bytes
+        raise ValueError("Image size exceeds 5MB. Please use a smaller image or lower resolution.")
 
     # Encode the binary data to base64
     img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
@@ -77,7 +65,7 @@ def extract_tables_from_image(image):
                         "type": "image",
                         "source": {
                             "type": "base64",
-                            "media_type": "image/jpeg",
+                            "media_type": "image/png",
                             "data": img_base64
                         }
                     },
@@ -192,14 +180,14 @@ def main(directory, debug=False):
         if filename.endswith('.pdf'):
             pdf_path = os.path.join(directory, filename)
             print(f"Processing {pdf_path}")
-            combined_image, image_size, image_quality = convert_pdf_to_image(pdf_path)
+            combined_image, image_size = convert_pdf_to_image(pdf_path)
             
             if debug:
-                image_filename = f"{os.path.splitext(filename)[0]}_combined.jpg"
+                image_filename = f"{os.path.splitext(filename)[0]}_combined.png"
                 image_path = os.path.join(debug_dir, image_filename)
-                combined_image.save(image_path, format='JPEG', quality=image_quality)
+                combined_image.save(image_path, format='PNG')
                 print(f"Saved debug image: {image_path}")
-                print(f"Image size: {image_size / 1024:.2f} KB, Quality: {image_quality}")
+                print(f"Image size: {image_size / 1024:.2f} KB")
                 continue  # Skip further processing in debug mode
             
             tables = extract_tables_from_image(combined_image)
