@@ -23,12 +23,12 @@ def convert_pdf_to_image(pdf_path):
         y_offset += image.size[1]
     
     # Resize the image if it's too large
-    max_size = (1600, 1600)  # Adjust these dimensions as needed
+    max_size = (2400, 6192)  # Adjust these dimensions as needed
     combined_image.thumbnail(max_size, Image.LANCZOS)
     
     # Convert PIL Image to bytes
     img_byte_arr = io.BytesIO()
-    combined_image.save(img_byte_arr, format='PNG')
+    combined_image.save(img_byte_arr, format='JPG')
     img_byte_arr = img_byte_arr.getvalue()
     
     if len(img_byte_arr) > 5 * 1024 * 1024:  # 5MB in bytes
