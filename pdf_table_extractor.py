@@ -58,7 +58,7 @@ def extract_tables_from_image(image):
                         "type": "image",
                         "source": {
                             "type": "base64",
-                            "media_type": "image/png",
+                            "media_type": "image/jpeg",
                             "data": img_base64
                         }
                     },
