@@ -22,7 +22,7 @@ This project is a Python script that extracts tables from PDF files, processes t
 
 1. Clone this repository:
    ```
-   git clone https://github.com/yourusername/pdf-table-extractor.git
+   git clone https://github.com/acrollet/pdf-table-extractor.git
    cd pdf-table-extractor
    ```
 
@@ -61,7 +61,7 @@ python pdf_table_extractor.py /path/to/pdf/directory [--debug] [--reset]
 ## Output
 
 - The extracted data is stored in a SQLite database named `extracted_data.db`
-- A visualization of the extracted data is saved as `data_visualization.png`
+- A simple visualization of the extracted data is saved as `data_visualization.png`
 
 ## Contributing
 
@@ -70,3 +70,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 This project is licensed under the MIT License.
+
