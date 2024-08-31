@@ -26,7 +26,7 @@ def extract_tables_from_image(image):
 
     message = client.messages.create(
         model="claude-3-opus-20240229",
-        max_tokens=1000,
+        max_tokens=1500,
         messages=[
             {
                 "role": "user",
@@ -41,7 +41,22 @@ def extract_tables_from_image(image):
                     },
                     {
                         "type": "text",
-                        "text": "Extract any tables from this image as structured JSON data. If no tables are found, return an empty list."
+                        "text": """Extract any tables from this image as structured JSON data. Pay special attention to tables with titles like:
+1. "Table 1 Results for the calculated entropy-forming-ability (EFA) descriptor, energetic distance from six-dimensional convex hull (ΔHf) and vibrational free energy at 2000 K (ΔFvib) for the five-metal carbide systems, arranged in descending order of EFA"
+2. "TABLE 2 Comparison of the thermal properties of (Hf0.2Zr0.2Ta0.2Nb0.2Ti0.2)C with binary carbides HfC, ZrC, TaC, NbC, and TiC. The data is at room temperature unless specifically indicated"
+
+These tables likely contain scientific data related to metal carbide systems and their properties. Extract all table data, including headers and values. If no tables are found, return an empty list.
+
+Format the extracted data as a list of dictionaries, where each dictionary represents a table with the following structure:
+{
+    "title": "The full title of the table",
+    "headers": ["Column1", "Column2", ...],
+    "data": [
+        ["Row1Col1", "Row1Col2", ...],
+        ["Row2Col1", "Row2Col2", ...],
+        ...
+    ]
+}"""
                     }
                 ]
             }
@@ -58,21 +73,48 @@ def extract_tables_from_image(image):
         return []
 
 def harmonize_data(all_tables):
-    # This is a placeholder function. You'll need to implement the logic
-    # to harmonize the data based on your specific requirements.
-    return all_tables
+    harmonized_data = []
+    for table in all_tables:
+        harmonized_table = {
+            "title": table["title"],
+            "columns": table["headers"],
+            "rows": table["data"]
+        }
+        harmonized_data.append(harmonized_table)
+    return harmonized_data
 
 def insert_into_sqlite(data, db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
-    # Create table (adjust schema as needed)
-    cursor.execute('''CREATE TABLE IF NOT EXISTS extracted_data
-                      (id INTEGER PRIMARY KEY, data TEXT)''')
+    # Create tables
+    cursor.execute('''CREATE TABLE IF NOT EXISTS tables
+                      (id INTEGER PRIMARY KEY, title TEXT)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS columns
+                      (id INTEGER PRIMARY KEY, table_id INTEGER, name TEXT,
+                       FOREIGN KEY(table_id) REFERENCES tables(id))''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS rows
+                      (id INTEGER PRIMARY KEY, table_id INTEGER,
+                       FOREIGN KEY(table_id) REFERENCES tables(id))''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS cell_values
+                      (row_id INTEGER, column_id INTEGER, value TEXT,
+                       FOREIGN KEY(row_id) REFERENCES rows(id),
+                       FOREIGN KEY(column_id) REFERENCES columns(id))''')
     
     # Insert data
-    for item in data:
-        cursor.execute("INSERT INTO extracted_data (data) VALUES (?)", (json.dumps(item),))
+    for table in data:
+        cursor.execute("INSERT INTO tables (title) VALUES (?)", (table['title'],))
+        table_id = cursor.lastrowid
+        
+        for col_name in table['columns']:
+            cursor.execute("INSERT INTO columns (table_id, name) VALUES (?, ?)", (table_id, col_name))
+        
+        for row in table['rows']:
+            cursor.execute("INSERT INTO rows (table_id) VALUES (?)", (table_id,))
+            row_id = cursor.lastrowid
+            for col_id, value in enumerate(row, start=1):
+                cursor.execute("INSERT INTO cell_values (row_id, column_id, value) VALUES (?, ?, ?)",
+                               (row_id, col_id, value))
     
     conn.commit()
     conn.close()
