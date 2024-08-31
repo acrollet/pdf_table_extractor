@@ -12,7 +12,7 @@ import base64
 import shutil
 
 def convert_pdf_to_image(pdf_path):
-    return convert_from_path(pdf_path)[0]
+    return convert_from_path(pdf_path)
 
 def extract_tables_from_image(image):
     client = anthropic.Anthropic()
@@ -151,19 +151,20 @@ def main(directory, debug=False):
         if filename.endswith('.pdf'):
             pdf_path = os.path.join(directory, filename)
             print(f"Processing {pdf_path}")
-            image = convert_pdf_to_image(pdf_path)
+            images = convert_pdf_to_image(pdf_path)
             
-            if debug:
-                image_filename = os.path.splitext(filename)[0] + '.png'
-                image_path = os.path.join(debug_dir, image_filename)
-                image.save(image_path)
-                print(f"Saved debug image: {image_path}")
-                continue  # Skip further processing in debug mode
-            
-            tables = extract_tables_from_image(image)
-            print(f"Extracted {len(tables)} tables from {filename}")
-            if tables:
-                all_tables.extend(tables)
+            for i, image in enumerate(images):
+                if debug:
+                    image_filename = f"{os.path.splitext(filename)[0]}_page{i+1}.png"
+                    image_path = os.path.join(debug_dir, image_filename)
+                    image.save(image_path)
+                    print(f"Saved debug image: {image_path}")
+                    continue  # Skip further processing in debug mode
+                
+                tables = extract_tables_from_image(image)
+                print(f"Extracted {len(tables)} tables from {filename} (page {i+1})")
+                if tables:
+                    all_tables.extend(tables)
     
     if debug:
         print(f"Debug images saved to {debug_dir}")
