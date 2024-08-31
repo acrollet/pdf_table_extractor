@@ -9,6 +9,7 @@ from PIL import Image
 import io
 import json
 import base64
+import shutil
 
 def convert_pdf_to_image(pdf_path):
     return convert_from_path(pdf_path)[0]
@@ -138,18 +139,36 @@ def visualize_data(db_path):
 
     conn.close()
 
-def main(directory):
+def main(directory, debug=False):
+    if debug:
+        debug_dir = 'debug_images'
+        if os.path.exists(debug_dir):
+            shutil.rmtree(debug_dir)
+        os.makedirs(debug_dir)
+
     all_tables = []
     for filename in os.listdir(directory):
         if filename.endswith('.pdf'):
             pdf_path = os.path.join(directory, filename)
             print(f"Processing {pdf_path}")
             image = convert_pdf_to_image(pdf_path)
+            
+            if debug:
+                image_filename = os.path.splitext(filename)[0] + '.png'
+                image_path = os.path.join(debug_dir, image_filename)
+                image.save(image_path)
+                print(f"Saved debug image: {image_path}")
+                continue  # Skip further processing in debug mode
+            
             tables = extract_tables_from_image(image)
             print(f"Extracted {len(tables)} tables from {filename}")
             if tables:
                 all_tables.extend(tables)
     
+    if debug:
+        print(f"Debug images saved to {debug_dir}")
+        return
+
     print(f"Total tables extracted: {len(all_tables)}")
     harmonized_data = harmonize_data(all_tables)
     db_path = 'extracted_data.db'
@@ -159,5 +178,6 @@ def main(directory):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract tables from PDF files and process the data.")
     parser.add_argument("directory", help="Directory containing PDF files")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode to dump images and quit")
     args = parser.parse_args()
-    main(args.directory)
+    main(args.directory, args.debug)
