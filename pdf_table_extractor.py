@@ -21,7 +21,26 @@ def convert_pdf_to_image(pdf_path):
     for image in images:
         combined_image.paste(image, (0, y_offset))
         y_offset += image.size[1]
-    return combined_image
+    
+    # Resize the image if it's too large
+    max_size = (1600, 1600)  # Adjust these dimensions as needed
+    combined_image.thumbnail(max_size, Image.LANCZOS)
+    
+    # Convert PIL Image to bytes with iterative quality reduction
+    quality = 85
+    while True:
+        img_byte_arr = io.BytesIO()
+        combined_image.save(img_byte_arr, format='JPEG', optimize=True, quality=quality)
+        img_byte_arr = img_byte_arr.getvalue()
+        
+        if len(img_byte_arr) <= 5 * 1024 * 1024:  # 5MB in bytes
+            break
+        
+        quality -= 5
+        if quality < 20:
+            raise ValueError("Unable to reduce image size below 5MB. Please use a smaller image.")
+    
+    return combined_image, len(img_byte_arr), quality
 
 def extract_tables_from_image(image):
     client = anthropic.Anthropic()
@@ -173,13 +192,14 @@ def main(directory, debug=False):
         if filename.endswith('.pdf'):
             pdf_path = os.path.join(directory, filename)
             print(f"Processing {pdf_path}")
-            combined_image = convert_pdf_to_image(pdf_path)
+            combined_image, image_size, image_quality = convert_pdf_to_image(pdf_path)
             
             if debug:
-                image_filename = f"{os.path.splitext(filename)[0]}_combined.png"
+                image_filename = f"{os.path.splitext(filename)[0]}_combined.jpg"
                 image_path = os.path.join(debug_dir, image_filename)
-                combined_image.save(image_path)
+                combined_image.save(image_path, format='JPEG', quality=image_quality)
                 print(f"Saved debug image: {image_path}")
+                print(f"Image size: {image_size / 1024:.2f} KB, Quality: {image_quality}")
                 continue  # Skip further processing in debug mode
             
             tables = extract_tables_from_image(combined_image)
