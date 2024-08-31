@@ -11,6 +11,7 @@ import json
 import base64
 import shutil
 import pytesseract
+import hashlib
 
 def convert_pdf_to_images(pdf_path):
     images = convert_from_path(pdf_path)
@@ -170,6 +171,24 @@ def visualize_data(db_path):
 
     conn.close()
 
+def manage_processed_files(db_path):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    # Create table for processed files if it doesn't exist
+    cursor.execute('''CREATE TABLE IF NOT EXISTS processed_files
+                      (id INTEGER PRIMARY KEY, filename TEXT, file_hash TEXT)''')
+    
+    def is_file_processed(filename, file_hash):
+        cursor.execute("SELECT * FROM processed_files WHERE filename = ? AND file_hash = ?", (filename, file_hash))
+        return cursor.fetchone() is not None
+    
+    def mark_file_as_processed(filename, file_hash):
+        cursor.execute("INSERT INTO processed_files (filename, file_hash) VALUES (?, ?)", (filename, file_hash))
+        conn.commit()
+    
+    return is_file_processed, mark_file_as_processed, conn.close
+
 def main(directory, debug=False):
     if debug:
         debug_dir = 'debug_images'
@@ -177,10 +196,23 @@ def main(directory, debug=False):
             shutil.rmtree(debug_dir)
         os.makedirs(debug_dir)
 
+    db_path = 'extracted_data.db'
+    is_file_processed, mark_file_as_processed, close_db = manage_processed_files(db_path)
+
     all_tables = []
     for filename in os.listdir(directory):
         if filename.endswith('.pdf'):
             pdf_path = os.path.join(directory, filename)
+            
+            # Calculate file hash
+            with open(pdf_path, 'rb') as f:
+                file_hash = hashlib.md5(f.read()).hexdigest()
+            
+            # Check if file has been processed
+            if is_file_processed(filename, file_hash):
+                print(f"Skipping already processed file: {filename}")
+                continue
+            
             print(f"Processing {pdf_path}")
             images = convert_pdf_to_images(pdf_path)
             filtered_images = filter_images_with_table(images)
@@ -197,16 +229,20 @@ def main(directory, debug=False):
             print(f"Extracted {len(tables)} tables from {filename}")
             if tables:
                 all_tables.extend(tables)
+            
+            # Mark file as processed
+            mark_file_as_processed(filename, file_hash)
     
     if debug:
         print(f"Debug images saved to {debug_dir}")
+        close_db()
         return
 
     print(f"Total tables extracted: {len(all_tables)}")
     harmonized_data = harmonize_data(all_tables)
-    db_path = 'extracted_data.db'
     insert_into_sqlite(harmonized_data, db_path)
     visualize_data(db_path)
+    close_db()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract tables from PDF files and process the data.")
