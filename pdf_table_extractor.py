@@ -8,6 +8,7 @@ import anthropic
 from PIL import Image
 import io
 import json
+import base64
 
 def convert_pdf_to_image(pdf_path):
     return convert_from_path(pdf_path)[0]
@@ -19,6 +20,9 @@ def extract_tables_from_image(image):
     img_byte_arr = io.BytesIO()
     image.save(img_byte_arr, format='PNG')
     img_byte_arr = img_byte_arr.getvalue()
+
+    # Encode the binary data to base64
+    img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
 
     message = client.messages.create(
         model="claude-3-opus-20240229",
@@ -32,7 +36,7 @@ def extract_tables_from_image(image):
                         "source": {
                             "type": "base64",
                             "media_type": "image/png",
-                            "data": img_byte_arr.decode('utf-8')
+                            "data": img_base64
                         }
                     },
                     {
