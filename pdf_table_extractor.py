@@ -186,13 +186,18 @@ def visualize_data(db_path):
 
     conn.close()
 
-def manage_processed_files(db_path):
+def manage_processed_files(db_path, reset=False):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
     # Create table for processed files if it doesn't exist
     cursor.execute('''CREATE TABLE IF NOT EXISTS processed_files
                       (id INTEGER PRIMARY KEY, filename TEXT, file_hash TEXT)''')
+    
+    if reset:
+        cursor.execute("DELETE FROM processed_files")
+        conn.commit()
+        print("Reset: Cleared all records of processed files.")
     
     def is_file_processed(filename, file_hash):
         cursor.execute("SELECT * FROM processed_files WHERE filename = ? AND file_hash = ?", (filename, file_hash))
@@ -204,7 +209,7 @@ def manage_processed_files(db_path):
     
     return is_file_processed, mark_file_as_processed, conn.close
 
-def main(directory, debug=False):
+def main(directory, debug=False, reset=False):
     if debug:
         debug_dir = 'debug_images'
         if os.path.exists(debug_dir):
@@ -212,7 +217,7 @@ def main(directory, debug=False):
         os.makedirs(debug_dir)
 
     db_path = 'extracted_data.db'
-    is_file_processed, mark_file_as_processed, close_db = manage_processed_files(db_path)
+    is_file_processed, mark_file_as_processed, close_db = manage_processed_files(db_path, reset)
 
     all_tables = []
     for filename in os.listdir(directory):
@@ -263,5 +268,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract tables from PDF files and process the data.")
     parser.add_argument("directory", help="Directory containing PDF files")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode to dump images and quit")
+    parser.add_argument("--reset", action="store_true", help="Reset the record of processed files")
     args = parser.parse_args()
-    main(args.directory, args.debug)
+    main(args.directory, args.debug, args.reset)
