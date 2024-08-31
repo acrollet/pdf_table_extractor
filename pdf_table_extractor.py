@@ -48,7 +48,14 @@ def extract_tables_from_image(image):
         ]
     )
     
-    return json.loads(message.content[0].text)
+    # Print raw response for debugging
+    print("Raw API response:", message.content[0].text)
+    
+    try:
+        return json.loads(message.content[0].text)
+    except json.JSONDecodeError:
+        print("Failed to parse JSON. Returning empty list.")
+        return []
 
 def harmonize_data(all_tables):
     # This is a placeholder function. You'll need to implement the logic
@@ -94,11 +101,14 @@ def main(directory):
     for filename in os.listdir(directory):
         if filename.endswith('.pdf'):
             pdf_path = os.path.join(directory, filename)
+            print(f"Processing {pdf_path}")
             image = convert_pdf_to_image(pdf_path)
             tables = extract_tables_from_image(image)
+            print(f"Extracted {len(tables)} tables from {filename}")
             if tables:
                 all_tables.extend(tables)
     
+    print(f"Total tables extracted: {len(all_tables)}")
     harmonized_data = harmonize_data(all_tables)
     db_path = 'extracted_data.db'
     insert_into_sqlite(harmonized_data, db_path)
