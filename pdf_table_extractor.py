@@ -25,11 +25,11 @@ def filter_images_with_table(images):
             filtered_images.append(image)
     return filtered_images
 
-def extract_tables_from_images(images):
+def extract_tables_from_images(images, filename):
     client = anthropic.Anthropic()
     all_tables = []
 
-    for image in images:
+    for i, image in enumerate(images):
         # Resize the image if it's too large
         max_size = (1600, 1600)  # Adjust these dimensions as needed
         image.thumbnail(max_size, Image.LANCZOS)
@@ -90,6 +90,9 @@ Format the extracted data as a list of dictionaries, where each dictionary repre
         
         try:
             tables = json.loads(message.content[0].text)
+            for table in tables:
+                table['filename'] = filename
+                table['page_number'] = i + 1
             all_tables.extend(tables)
         except json.JSONDecodeError:
             print("Failed to parse JSON. Skipping this image.")
@@ -100,6 +103,8 @@ def harmonize_data(all_tables):
     harmonized_data = []
     for table in all_tables:
         harmonized_table = {
+            "filename": table["filename"],
+            "page_number": table["page_number"],
             "title": table["title"],
             "columns": table["headers"],
             "rows": table["data"]
@@ -113,7 +118,7 @@ def insert_into_sqlite(data, db_path):
     
     # Create tables
     cursor.execute('''CREATE TABLE IF NOT EXISTS tables
-                      (id INTEGER PRIMARY KEY, title TEXT)''')
+                      (id INTEGER PRIMARY KEY, filename TEXT, page_number INTEGER, title TEXT)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS columns
                       (id INTEGER PRIMARY KEY, table_id INTEGER, name TEXT,
                        FOREIGN KEY(table_id) REFERENCES tables(id))''')
@@ -127,7 +132,8 @@ def insert_into_sqlite(data, db_path):
     
     # Insert data
     for table in data:
-        cursor.execute("INSERT INTO tables (title) VALUES (?)", (table['title'],))
+        cursor.execute("INSERT INTO tables (filename, page_number, title) VALUES (?, ?, ?)", 
+                       (table['filename'], table['page_number'], table['title']))
         table_id = cursor.lastrowid
         
         for col_name in table['columns']:
@@ -148,12 +154,12 @@ def visualize_data(db_path):
     cursor = conn.cursor()
     
     # Fetch data from the tables table
-    cursor.execute("SELECT id, title FROM tables")
+    cursor.execute("SELECT id, filename, page_number, title FROM tables")
     tables = cursor.fetchall()
     
     # Fetch the number of rows for each table
     table_sizes = []
-    for table_id, _ in tables:
+    for table_id, _, _, _ in tables:
         cursor.execute("SELECT COUNT(*) FROM rows WHERE table_id = ?", (table_id,))
         row_count = cursor.fetchone()[0]
         table_sizes.append(row_count)
@@ -161,10 +167,10 @@ def visualize_data(db_path):
     # Simple visualization
     plt.figure(figsize=(12, 6))
     plt.bar(range(len(tables)), table_sizes)
-    plt.xlabel('Table ID')
+    plt.xlabel('Table')
     plt.ylabel('Number of Rows')
     plt.title('Number of Rows per Extracted Table')
-    plt.xticks(range(len(tables)), [f"Table {table[0]}" for table in tables], rotation=45, ha='right')
+    plt.xticks(range(len(tables)), [f"{table[1]}:{table[2]}" for table in tables], rotation=45, ha='right')
     plt.tight_layout()
     plt.savefig('data_visualization.png')
     plt.close()
@@ -225,7 +231,7 @@ def main(directory, debug=False):
                     print(f"Saved debug image: {image_path}")
                 continue  # Skip further processing in debug mode
             
-            tables = extract_tables_from_images(filtered_images)
+            tables = extract_tables_from_images(filtered_images, filename)
             print(f"Extracted {len(tables)} tables from {filename}")
             if tables:
                 all_tables.extend(tables)
