@@ -29,9 +29,9 @@ def filter_images_with_table(images):
 def extract_paper_info(first_page_image):
     text = pytesseract.image_to_string(first_page_image)
     
-    # Extract primary author (assuming it's the first name on the page)
-    author_match = re.search(r'^([A-Z][a-z]+ [A-Z][a-z]+)', text, re.MULTILINE)
-    primary_author = author_match.group(1) if author_match else "Unknown"
+    # Extract primary author (assuming it's the last name listed)
+    author_matches = re.findall(r'([A-Z][a-z]+ [A-Z][a-z]+)', text)
+    primary_author = author_matches[-1] if author_matches else "Unknown"
     
     # Extract DOI
     doi_match = re.search(r'DOI:?\s*(10\.\d{4,9}/[-._;()/:A-Z0-9]+)', text, re.IGNORECASE)
