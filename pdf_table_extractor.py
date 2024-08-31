@@ -146,16 +146,25 @@ def visualize_data(db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
-    # Fetch data (adjust query as needed)
-    cursor.execute("SELECT * FROM extracted_data")
-    data = cursor.fetchall()
+    # Fetch data from the tables table
+    cursor.execute("SELECT id, title FROM tables")
+    tables = cursor.fetchall()
     
-    # Simple visualization (adjust as needed)
-    plt.figure(figsize=(10, 6))
-    plt.bar(range(len(data)), [len(json.loads(row[1])) for row in data])
-    plt.xlabel('Row ID')
-    plt.ylabel('Number of Items')
-    plt.title('Visualization of Extracted Data')
+    # Fetch the number of rows for each table
+    table_sizes = []
+    for table_id, _ in tables:
+        cursor.execute("SELECT COUNT(*) FROM rows WHERE table_id = ?", (table_id,))
+        row_count = cursor.fetchone()[0]
+        table_sizes.append(row_count)
+    
+    # Simple visualization
+    plt.figure(figsize=(12, 6))
+    plt.bar(range(len(tables)), table_sizes)
+    plt.xlabel('Table ID')
+    plt.ylabel('Number of Rows')
+    plt.title('Number of Rows per Extracted Table')
+    plt.xticks(range(len(tables)), [f"Table {table[0]}" for table in tables], rotation=45, ha='right')
+    plt.tight_layout()
     plt.savefig('data_visualization.png')
     plt.close()
 
