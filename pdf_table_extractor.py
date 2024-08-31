@@ -12,18 +12,32 @@ import base64
 import shutil
 import pytesseract
 import hashlib
+import re
 
 def convert_pdf_to_images(pdf_path):
     images = convert_from_path(pdf_path)
     return images
 
 def filter_images_with_table(images):
-    filtered_images = []
-    for image in images:
+    filtered_images = [images[0]]  # Always keep the first page
+    for image in images[1:]:
         text = pytesseract.image_to_string(image)
         if "Table" in text:
             filtered_images.append(image)
     return filtered_images
+
+def extract_paper_info(first_page_image):
+    text = pytesseract.image_to_string(first_page_image)
+    
+    # Extract primary author (assuming it's the first name on the page)
+    author_match = re.search(r'^([A-Z][a-z]+ [A-Z][a-z]+)', text, re.MULTILINE)
+    primary_author = author_match.group(1) if author_match else "Unknown"
+    
+    # Extract DOI
+    doi_match = re.search(r'DOI:?\s*(10\.\d{4,9}/[-._;()/:A-Z0-9]+)', text, re.IGNORECASE)
+    doi = doi_match.group(1) if doi_match else "Not found"
+    
+    return primary_author, doi
 
 def extract_tables_from_images(images, filename):
     client = anthropic.Anthropic()
@@ -116,7 +130,9 @@ def harmonize_data(all_tables):
             "page_number": table["page_number"],
             "title": table["title"],
             "columns": table["headers"],
-            "rows": table["data"]
+            "rows": table["data"],
+            "primary_author": table["primary_author"],
+            "doi": table["doi"]
         }
         harmonized_data.append(harmonized_table)
     return harmonized_data
@@ -127,7 +143,8 @@ def insert_into_sqlite(data, db_path):
     
     # Create tables
     cursor.execute('''CREATE TABLE IF NOT EXISTS tables
-                      (id INTEGER PRIMARY KEY, filename TEXT, page_number INTEGER, title TEXT)''')
+                      (id INTEGER PRIMARY KEY, filename TEXT, page_number INTEGER, title TEXT, 
+                       primary_author TEXT, doi TEXT)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS columns
                       (id INTEGER PRIMARY KEY, table_id INTEGER, name TEXT,
                        FOREIGN KEY(table_id) REFERENCES tables(id))''')
@@ -141,8 +158,8 @@ def insert_into_sqlite(data, db_path):
     
     # Insert data
     for table in data:
-        cursor.execute("INSERT INTO tables (filename, page_number, title) VALUES (?, ?, ?)", 
-                       (table['filename'], table['page_number'], table['title']))
+        cursor.execute("INSERT INTO tables (filename, page_number, title, primary_author, doi) VALUES (?, ?, ?, ?, ?)", 
+                       (table['filename'], table['page_number'], table['title'], table['primary_author'], table['doi']))
         table_id = cursor.lastrowid
         
         for col_name in table['columns']:
@@ -235,6 +252,12 @@ def main(directory, debug=False, reset=False):
             
             print(f"Processing {pdf_path}")
             images = convert_pdf_to_images(pdf_path)
+            
+            # Extract paper info from the first page
+            primary_author, doi = extract_paper_info(images[0])
+            print(f"Primary Author: {primary_author}")
+            print(f"DOI: {doi}")
+            
             filtered_images = filter_images_with_table(images)
             
             if debug:
@@ -248,6 +271,9 @@ def main(directory, debug=False, reset=False):
             tables = extract_tables_from_images(filtered_images, filename)
             print(f"Extracted {len(tables)} tables from {filename}")
             if tables:
+                for table in tables:
+                    table['primary_author'] = primary_author
+                    table['doi'] = doi
                 all_tables.extend(tables)
             
             # Mark file as processed
