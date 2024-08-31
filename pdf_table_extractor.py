@@ -10,68 +10,59 @@ import io
 import json
 import base64
 import shutil
+import pytesseract
 
-def convert_pdf_to_image(pdf_path):
+def convert_pdf_to_images(pdf_path):
     images = convert_from_path(pdf_path)
-    widths, heights = zip(*(i.size for i in images))
-    max_width = max(widths)
-    total_height = sum(heights)
-    combined_image = Image.new('RGB', (max_width, total_height))
-    y_offset = 0
+    return images
+
+def filter_images_with_table(images):
+    filtered_images = []
     for image in images:
-        combined_image.paste(image, (0, y_offset))
-        y_offset += image.size[1]
-    
-    # Resize the image if it's too large
-    max_size = (2400, 6192)  # Adjust these dimensions as needed
-    combined_image.thumbnail(max_size, Image.LANCZOS)
-    
-    # Convert PIL Image to bytes
-    img_byte_arr = io.BytesIO()
-    combined_image.save(img_byte_arr, format='JPG')
-    img_byte_arr = img_byte_arr.getvalue()
-    
-    if len(img_byte_arr) > 5 * 1024 * 1024:  # 5MB in bytes
-        raise ValueError("Image size exceeds 5MB. Please use a smaller image or lower resolution.")
-    
-    return combined_image, len(img_byte_arr)
+        text = pytesseract.image_to_string(image)
+        if "Table" in text:
+            filtered_images.append(image)
+    return filtered_images
 
-def extract_tables_from_image(image):
+def extract_tables_from_images(images):
     client = anthropic.Anthropic()
-    
-    # Resize the image if it's too large
-    max_size = (1600, 1600)  # Adjust these dimensions as needed
-    image.thumbnail(max_size, Image.LANCZOS)
-    
-    # Convert PIL Image to bytes
-    img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='PNG')
-    img_byte_arr = img_byte_arr.getvalue()
-    
-    if len(img_byte_arr) > 5 * 1024 * 1024:  # 5MB in bytes
-        raise ValueError("Image size exceeds 5MB. Please use a smaller image or lower resolution.")
+    all_tables = []
 
-    # Encode the binary data to base64
-    img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
+    for image in images:
+        # Resize the image if it's too large
+        max_size = (1600, 1600)  # Adjust these dimensions as needed
+        image.thumbnail(max_size, Image.LANCZOS)
+        
+        # Convert PIL Image to bytes
+        img_byte_arr = io.BytesIO()
+        image.save(img_byte_arr, format='PNG')
+        img_byte_arr = img_byte_arr.getvalue()
+        
+        if len(img_byte_arr) > 5 * 1024 * 1024:  # 5MB in bytes
+            print("Image size exceeds 5MB. Skipping this image.")
+            continue
 
-    message = client.messages.create(
-        model="claude-3-opus-20240229",
-        max_tokens=1500,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/png",
-                            "data": img_base64
-                        }
-                    },
-                    {
-                        "type": "text",
-                        "text": """Extract any tables from this image as structured JSON data. Pay special attention to tables with titles like:
+        # Encode the binary data to base64
+        img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
+
+        message = client.messages.create(
+            model="claude-3-opus-20240229",
+            max_tokens=1500,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": img_base64
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": """Extract any tables from this image as structured JSON data. Pay special attention to tables with titles like:
 1. "Table 1 Results for the calculated entropy-forming-ability (EFA) descriptor, energetic distance from six-dimensional convex hull (ΔHf) and vibrational free energy at 2000 K (ΔFvib) for the five-metal carbide systems, arranged in descending order of EFA"
 2. "TABLE 2 Comparison of the thermal properties of (Hf0.2Zr0.2Ta0.2Nb0.2Ti0.2)C with binary carbides HfC, ZrC, TaC, NbC, and TiC. The data is at room temperature unless specifically indicated"
 
@@ -87,20 +78,22 @@ Format the extracted data as a list of dictionaries, where each dictionary repre
         ...
     ]
 }"""
-                    }
-                ]
-            }
-        ]
-    )
-    
-    # Print raw response for debugging
-    print("Raw API response:", message.content[0].text)
-    
-    try:
-        return json.loads(message.content[0].text)
-    except json.JSONDecodeError:
-        print("Failed to parse JSON. Returning empty list.")
-        return []
+                        }
+                    ]
+                }
+            ]
+        )
+        
+        # Print raw response for debugging
+        print("Raw API response:", message.content[0].text)
+        
+        try:
+            tables = json.loads(message.content[0].text)
+            all_tables.extend(tables)
+        except json.JSONDecodeError:
+            print("Failed to parse JSON. Skipping this image.")
+
+    return all_tables
 
 def harmonize_data(all_tables):
     harmonized_data = []
@@ -180,17 +173,18 @@ def main(directory, debug=False):
         if filename.endswith('.pdf'):
             pdf_path = os.path.join(directory, filename)
             print(f"Processing {pdf_path}")
-            combined_image, image_size = convert_pdf_to_image(pdf_path)
+            images = convert_pdf_to_images(pdf_path)
+            filtered_images = filter_images_with_table(images)
             
             if debug:
-                image_filename = f"{os.path.splitext(filename)[0]}_combined.png"
-                image_path = os.path.join(debug_dir, image_filename)
-                combined_image.save(image_path, format='PNG')
-                print(f"Saved debug image: {image_path}")
-                print(f"Image size: {image_size / 1024:.2f} KB")
+                for i, image in enumerate(filtered_images):
+                    image_filename = f"{os.path.splitext(filename)[0]}_page_{i+1}.png"
+                    image_path = os.path.join(debug_dir, image_filename)
+                    image.save(image_path, format='PNG')
+                    print(f"Saved debug image: {image_path}")
                 continue  # Skip further processing in debug mode
             
-            tables = extract_tables_from_image(combined_image)
+            tables = extract_tables_from_images(filtered_images)
             print(f"Extracted {len(tables)} tables from {filename}")
             if tables:
                 all_tables.extend(tables)
