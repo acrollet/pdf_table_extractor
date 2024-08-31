@@ -12,7 +12,16 @@ import base64
 import shutil
 
 def convert_pdf_to_image(pdf_path):
-    return convert_from_path(pdf_path)
+    images = convert_from_path(pdf_path)
+    widths, heights = zip(*(i.size for i in images))
+    max_width = max(widths)
+    total_height = sum(heights)
+    combined_image = Image.new('RGB', (max_width, total_height))
+    y_offset = 0
+    for image in images:
+        combined_image.paste(image, (0, y_offset))
+        y_offset += image.size[1]
+    return combined_image
 
 def extract_tables_from_image(image):
     client = anthropic.Anthropic()
@@ -151,20 +160,19 @@ def main(directory, debug=False):
         if filename.endswith('.pdf'):
             pdf_path = os.path.join(directory, filename)
             print(f"Processing {pdf_path}")
-            images = convert_pdf_to_image(pdf_path)
+            combined_image = convert_pdf_to_image(pdf_path)
             
-            for i, image in enumerate(images):
-                if debug:
-                    image_filename = f"{os.path.splitext(filename)[0]}_page{i+1}.png"
-                    image_path = os.path.join(debug_dir, image_filename)
-                    image.save(image_path)
-                    print(f"Saved debug image: {image_path}")
-                    continue  # Skip further processing in debug mode
-                
-                tables = extract_tables_from_image(image)
-                print(f"Extracted {len(tables)} tables from {filename} (page {i+1})")
-                if tables:
-                    all_tables.extend(tables)
+            if debug:
+                image_filename = f"{os.path.splitext(filename)[0]}_combined.png"
+                image_path = os.path.join(debug_dir, image_filename)
+                combined_image.save(image_path)
+                print(f"Saved debug image: {image_path}")
+                continue  # Skip further processing in debug mode
+            
+            tables = extract_tables_from_image(combined_image)
+            print(f"Extracted {len(tables)} tables from {filename}")
+            if tables:
+                all_tables.extend(tables)
     
     if debug:
         print(f"Debug images saved to {debug_dir}")
